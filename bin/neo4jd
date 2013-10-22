@@ -1,0 +1,97 @@
+#!/bin/sh
+
+#set -x
+
+######################
+# NEO4J START SCRIPT #
+######################
+
+# Responsible for
+# * parsing minimal set of arguments
+# * setting safe defaults
+# * constructing classpath
+# * invoking java with nohup so that a backgrounded process will stick around
+
+# Not responsible for
+# * store upgrades
+# * recovery from crashes
+# * evaluating the state of the database
+# * installing Neo4j
+# * installing users, or any system configuration
+# * sending messages to the users about their choice of JVM, etc.
+
+# Should run on 
+# * any Linux
+# * Solaris and descendents
+# * HP-UX
+# * BSD's and descendents (including OSX)
+
+# Dependencies:
+# * Bourne shell
+# * JVM
+
+USAGE="Usage: $0 [ -p <pidfile>] [-l <logfile> ]"
+NEO4J_HOME="`dirname $0`/.."
+
+DEFAULT_LOG_FILE="${NEO4J_HOME}/data/log/console.log"
+LOG_FILE=$DEFAULT_LOG_FILE
+
+DEFAULT_DATA_DIR="${NEO4J_HOME}/data/graph.db"
+DATA_DIR=${DEFAULT_DATA_DIR}
+
+DEFAULT_PID_FILE="${DEFAULT_DATA_DIR}/neo4j.pid"
+PID_FILE=${DEFAULT_PID_FILE}
+DAEMONIZE=false
+
+die() {
+  echo $1
+  exit 1
+}
+
+while getopts “hdp:l:” OPTION; do
+     [ -z "$OPTARG" -a "${OPTION}" == "?" ] && die "$USAGE"
+     case $OPTION in
+         h)
+             echo $USAGE
+             exit 1
+             ;;
+          p)
+             PID_FILE=${OPTARG}
+             ;;
+          l)
+             LOG_FILE=${OPTARG}
+             ;;
+          d)
+             DAEMONIZE=true
+             ;;
+        esac
+done
+
+
+#[ "${OPTION}" == '?' ] && die "$USAGE"
+
+mkdir -p `dirname ${PID_FILE}` `dirname ${LOG_FILE}` $DATA_DIR
+
+wd=`pwd`
+
+cd $NEO4J_HOME || die "Sorry, I couldn't find the Neo4j dir: $!" # it would be nice to fix this
+
+CLASSPATH=`find . -name '*.jar' | xargs echo | tr ' ' ':'`
+[ `which java` ] || [ -z "${JAVA_HOME}" ] || die "I couldn't find a java command or JAVA_HOME environment variable"
+
+arguments="-cp ${CLASSPATH} \
+                     -Dneo4j.home=${NEO4J_HOME} \
+                     -Dfile.encoding=UTF-8 \
+                     -Dorg.neo4j.server.properties=conf/neo4j-server.properties \
+                     org.neo4j.server.Bootstrapper"
+
+if [ $DAEMONIZE == true ]; then
+mkdir -p `dirname ${PID_FILE}`
+  nohup java ${arguments} > ${LOG_FILE} 2>&1 &
+  response=$?
+  echo $! > $PID_FILE
+  exit $response
+else
+  eval java $arguments
+fi
+cd $wd
